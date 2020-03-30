@@ -5,9 +5,12 @@ import numpy as np
 import time
 
 # Speed of the drone
-S = 60
+S = 90
 # Frames per second of the pygame window display
 FPS = 25
+#xml file for facial recognition
+#classifier
+faceCascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 
 class FrontEnd(object):
@@ -26,8 +29,6 @@ class FrontEnd(object):
         pygame.init()
 
         # Creat pygame window
-        pygame.display.set_caption("Tello video stream")
-        self.screen = pygame.display.set_mode([960, 720])
 
         # Init Tello object that interacts with the Tello drone
         self.tello = Tello()
@@ -64,6 +65,9 @@ class FrontEnd(object):
             return
 
         frame_read = self.tello.get_frame_read()
+        video_capture = self.tello.get_frame_read()
+
+
 
         should_stop = False
         while not should_stop:
@@ -84,18 +88,30 @@ class FrontEnd(object):
             if frame_read.stopped:
                 frame_read.stop()
                 break
+            gray = cv2.cvtColor(frame_read.frame, cv2.COLOR_BGR2GRAY)
+            faces = faceCascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(30, 30),
+                flags=cv2.CASCADE_SCALE_IMAGE
+            )
+            frame = frame_read.frame
 
-            self.screen.fill([0, 0, 0])
-            frame = cv2.cvtColor(frame_read.frame, cv2.COLOR_BGR2RGB)
-            frame = np.rot90(frame)
-            frame = np.flipud(frame)
-            frame = pygame.surfarray.make_surface(frame)
-            self.screen.blit(frame, (0, 0))
-            pygame.display.update()
+            for (x, y, w, h) in faces:
+                print(x)
+                cv2.rectangle(frame, (x,y), (x+w, y+h), (255,255,0), 2) 
+
+           
+
+            cv2.imshow("video", frame)
+
+            
 
             time.sleep(1 / FPS)
 
         # Call it always before finishing. To deallocate resources.
+        cv2.destroyAllWindows()
         self.tello.end()
 
     def keydown(self, key):
