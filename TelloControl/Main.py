@@ -3,16 +3,19 @@ import cv2
 import pygame
 import numpy as np
 import time
+import math
 
 # Speed of the drone
-S = 90
+S = 60
 # Frames per second of the pygame window display
 FPS = 25
-#xml file for facial recognition
-#classifier
 faceCascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-
+minsize = 0
+centerX = 480
+centerY = 360
+kPX = 0.15
+kPY = 0.15
 class FrontEnd(object):
     """ Maintains the Tello display and moves it through the keyboard keys.
         Press escape key to quit.
@@ -29,6 +32,8 @@ class FrontEnd(object):
         pygame.init()
 
         # Creat pygame window
+        pygame.display.set_caption("Tello video stream")
+        self.screen = pygame.display.set_mode([960, 720])
 
         # Init Tello object that interacts with the Tello drone
         self.tello = Tello()
@@ -65,13 +70,37 @@ class FrontEnd(object):
             return
 
         frame_read = self.tello.get_frame_read()
-        video_capture = self.tello.get_frame_read()
-
-
 
         should_stop = False
-        while not should_stop:
+        faceX = 0
+        faceY = 0
+        xErr = 0
+        yErr = 0
+        trackTarget = False
 
+        while not should_stop:
+            self.screen.fill([0, 0, 0])
+            frame = cv2.cvtColor(frame_read.frame, cv2.COLOR_BGR2RGB)
+            faces = faceCascade.detectMultiScale(
+                frame,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(30, 30),
+                flags=cv2.CASCADE_SCALE_IMAGE
+            )
+            frame = np.rot90(frame)
+            frame = np.flipud(frame)
+            frame = pygame.surfarray.make_surface(frame)
+            self.screen.blit(frame, (0, 0))
+
+            for (x, y, w, h) in faces:
+                if(w*h >= minsize):
+                    faceX = x+0.5*w
+                    faceY = y+0.5*h
+                    xErr = (centerX - faceX)
+                    yErr = (centerY - faceY)
+                    minsize = w*h
+            minsize = 0
             for event in pygame.event.get():
                 if event.type == pygame.USEREVENT + 1:
                     self.update()
@@ -80,40 +109,40 @@ class FrontEnd(object):
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         should_stop = True
+                    elif event.key == pygame.K_r:
+                        trackTarget = True
                     else:
                         self.keydown(event.key)
                 elif event.type == pygame.KEYUP:
-                    self.keyup(event.key)
+                    if(event.key == pygame.K_r):
+                        trackTarget = False
+                    else:
+                        self.keyup(event.key)
+            if(trackTarget):
+                if(len(faces)>0):
+                    print(kPX*xErr)
+                    self.yaw_velocity = -math.floor(kPX*xErr)
+                    self.up_down_velocity = math.floor(kPY*yErr)
+                else:
+                    print(":(")
+                    self.yaw_velocity = 0
+                    self.up_down_velocity =0
+
+
 
             if frame_read.stopped:
                 frame_read.stop()
                 break
-            gray = cv2.cvtColor(frame_read.frame, cv2.COLOR_BGR2GRAY)
-            faces = faceCascade.detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=5,
-                minSize=(30, 30),
-                flags=cv2.CASCADE_SCALE_IMAGE
-            )
-            frame = frame_read.frame
 
-            for (x, y, w, h) in faces:
-                print(x)
-                cv2.rectangle(frame, (x,y), (x+w, y+h), (255,255,0), 2) 
 
-           
 
-            cv2.imshow("video", frame)
-
-            
+            pygame.display.update()
 
             time.sleep(1 / FPS)
 
         # Call it always before finishing. To deallocate resources.
-        cv2.destroyAllWindows()
         self.tello.end()
-
+        cv2.destroyAllWindows()
     def keydown(self, key):
         """ Update velocities based on key pressed
         Arguments:
